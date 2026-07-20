@@ -1,0 +1,32 @@
+# Visual Studio / .NET build output
+.vs/
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+*.pdb
+
+# Local .NET / NuGet caches used by repository-local builds
+.dotnet/
+.nuget/
+
+# Published binaries should be attached to GitHub Releases, not committed
+dist/
+publish/
+发布/
+发布_单文件/
+
+# Runtime data: may contain encrypted credentials or account-identifying logs
+data/
+**/data/
+settings.json
+sign.log
+self-test.log
+scheduled-task.xml
+*.log
+
+# Local tooling and temporary files
+.bundle_extract*/
+*.tmp
+*.bak
