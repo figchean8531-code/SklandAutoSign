@@ -160,7 +160,7 @@ git grep -n -i -E "token|password|secret|credential"
 
 ## 版权与使用许可
 
-Copyright © 2026 Feihan Cheng.
+Copyright © 2026 Figchean8531.
 
 本项目允许个人和组织在**非商业目的**下自由查看、使用、复制、修改和再分发本项目的代码及其修改版本，但应保留原作者的版权声明和本项目的许可说明。
 
