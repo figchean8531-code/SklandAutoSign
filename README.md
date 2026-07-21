@@ -34,7 +34,7 @@ Release 中的单文件版本为自包含构建，不要求另外安装 .NET Run
 
 ## 下载与安装
 
-1. 从 GitHub Releases 下载 `森空岛游戏自动签到.exe`。
+1. 从 GitHub Releases 下载 `SklandAutoSign.exe`。
 2. 将 EXE 放在稳定且有写入权限的目录，例如 `D:\Tools\SklandAutoSign`。
 3. 不要直接从压缩包、浏览器临时目录或会被自动清理的目录运行。
 4. 双击启动程序。
@@ -65,7 +65,6 @@ Release 中的单文件版本为自包含构建，不要求另外安装 .NET Run
 - 移动或重命名 EXE 后，原任务中的路径会失效；请重新打开程序并点击“启用每日任务”。
 - 点击“停用每日任务”只删除计划任务，不会自动删除本地 Token。
 
-早期版本使用过 `森空岛终末地每日签到` 任务名。新版在重新启用任务时会清理该旧任务。
 
 ## 本地文件与隐私
 
@@ -127,12 +126,12 @@ dotnet publish .\SklandAutoSign.csproj `
   -o .\dist
 ```
 
-输出文件为 `dist\森空岛游戏自动签到.exe`。
+输出文件为 `dist\SklandAutoSign.exe`。
 
 ### 发布 GitHub Release（维护者）
 
 1. 从干净工作区执行上述 `dotnet publish` 命令。
-2. 运行 `Get-FileHash -Algorithm SHA256 .\dist\森空岛游戏自动签到.exe` 生成校验值。
+2. 运行 `Get-FileHash -Algorithm SHA256 .\dist\SklandAutoSign.exe` 生成校验值。
 3. 在 GitHub 创建带版本号的 Release，例如 `v1.0.0`。
 4. 将 EXE 和对应的 `SHA256SUMS.txt` 作为 Release 附件上传，不要把 `data` 目录打包进去。
 5. 在另一台或新建的 Windows 用户环境中完成一次无账号启动测试，再发布给普通用户。
