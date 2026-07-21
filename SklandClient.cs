@@ -16,6 +16,7 @@ internal sealed class SklandClient : IDisposable
     private const string BindingUrl = "https://zonai.skland.com/api/v1/game/player/binding";
     private const string ArknightsAttendanceUrl = "https://zonai.skland.com/api/v1/game/attendance";
     private const string EndfieldAttendanceUrl = "https://zonai.skland.com/api/v1/game/endfield/attendance";
+    private const string EndfieldAttendanceFallbackUrl = "https://zonai.skland.com/web/v1/game/endfield/attendance";
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
@@ -131,6 +132,7 @@ internal sealed class SklandClient : IDisposable
 
         var arknights = new List<ArknightsRole>();
         var endfield = new List<EndfieldRole>();
+        var seenEndfieldRoles = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonElement app in root.GetProperty("data").GetProperty("list").EnumerateArray())
         {
             string appCode = GetOptionalString(app, "appCode", "");
@@ -154,29 +156,44 @@ internal sealed class SklandClient : IDisposable
                 }
                 else if (string.Equals(appCode, "endfield", StringComparison.OrdinalIgnoreCase))
                 {
-                    string uid = ReadOptionalStringOrNumber(binding, "uid");
-                    if (!binding.TryGetProperty("defaultRole", out JsonElement role) || role.ValueKind != JsonValueKind.Object)
+                    // A binding may contain multiple Endfield roles. Enumerate every role instead of
+                    // selecting only defaultRole/roles[0]. The HashSet avoids signing the same role twice
+                    // when defaultRole is also present in roles.
+                    if (binding.TryGetProperty("roles", out JsonElement roles) && roles.ValueKind == JsonValueKind.Array)
                     {
-                        if (!binding.TryGetProperty("roles", out JsonElement roles) || roles.ValueKind != JsonValueKind.Array || roles.GetArrayLength() == 0)
-                            continue;
-                        role = roles[0];
+                        foreach (JsonElement role in roles.EnumerateArray())
+                            AddEndfieldRole(endfield, seenEndfieldRoles, binding, role);
                     }
 
-                    string roleId = ReadOptionalStringOrNumber(role, "roleId");
-                    string serverId = ReadOptionalStringOrNumber(role, "serverId");
-                    if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(roleId) && !string.IsNullOrWhiteSpace(serverId))
-                    {
-                        endfield.Add(new EndfieldRole(
-                            uid,
-                            roleId,
-                            serverId,
-                            GetOptionalString(role, "nickname", "未知角色"),
-                            GetOptionalString(binding, "channelName", GetOptionalString(role, "serverName", "未知服务器"))));
-                    }
+                    if (binding.TryGetProperty("defaultRole", out JsonElement defaultRole) && defaultRole.ValueKind == JsonValueKind.Object)
+                        AddEndfieldRole(endfield, seenEndfieldRoles, binding, defaultRole);
                 }
             }
         }
         return new BindingInfo(arknights, endfield);
+    }
+
+    private static void AddEndfieldRole(
+        List<EndfieldRole> target,
+        HashSet<string> seen,
+        JsonElement binding,
+        JsonElement role)
+    {
+        string roleId = ReadOptionalStringOrNumber(role, "roleId");
+        string serverId = ReadOptionalStringOrNumber(role, "serverId");
+        if (string.IsNullOrWhiteSpace(roleId) || string.IsNullOrWhiteSpace(serverId))
+            return;
+
+        string bindingId = ReadOptionalStringOrNumber(binding, "uid");
+        string key = $"{bindingId}\u001f{serverId}\u001f{roleId}";
+        if (!seen.Add(key))
+            return;
+
+        target.Add(new EndfieldRole(
+            roleId,
+            serverId,
+            GetOptionalString(role, "nickname", GetOptionalString(binding, "nickName", "未知角色")),
+            GetOptionalString(binding, "channelName", GetOptionalString(role, "serverName", "未知服务器"))));
     }
 
     private async Task<SignResult> SignArknightsAsync(
@@ -194,19 +211,40 @@ internal sealed class SklandClient : IDisposable
     private async Task<SignResult> SignEndfieldAsync(
         string cred, string signToken, EndfieldRole role, CancellationToken cancellationToken)
     {
-        string body = JsonSerializer.Serialize(new
+        // Endfield selects the target role through the sk-game-role header. The signed POST body is empty.
+        // Prefer the /api/v1 endpoint used by the current project and fall back to /web/v1 only when the
+        // server explicitly reports that the endpoint/method is unavailable.
+        string[] urls = { EndfieldAttendanceUrl, EndfieldAttendanceFallbackUrl };
+        string roleHeader = $"3_{role.RoleId}_{role.ServerId}";
+
+        for (int index = 0; index < urls.Length; index++)
         {
-            uid = role.Uid,
-            gameId = 3,
-            roleId = role.RoleId,
-            serverId = role.ServerId
-        });
-        using HttpResponseMessage response = await SendSignedJsonAsync(
-            EndfieldAttendanceUrl, body, cred, signToken, cancellationToken);
-        using JsonDocument json = await ReadJsonAsync(response, "终末地签到", cancellationToken);
-        JsonElement root = json.RootElement;
-        string label = $"[终末地] {role.Nickname}（{role.ChannelName}）";
-        return ParseAttendanceResult(root, label, FormatEndfieldRewards);
+            string url = urls[index];
+            using HttpResponseMessage response = await SendSignedJsonAsync(
+                url,
+                "",
+                cred,
+                signToken,
+                cancellationToken,
+                request =>
+                {
+                    request.Headers.TryAddWithoutValidation("sk-game-role", roleHeader);
+                    request.Headers.TryAddWithoutValidation("referer", "https://game.skland.com/");
+                    request.Headers.TryAddWithoutValidation("origin", "https://game.skland.com");
+                });
+
+            bool endpointUnavailable = response.StatusCode is System.Net.HttpStatusCode.NotFound
+                or System.Net.HttpStatusCode.MethodNotAllowed;
+            if (endpointUnavailable && index + 1 < urls.Length)
+                continue;
+
+            using JsonDocument json = await ReadJsonAsync(response, "终末地签到", cancellationToken);
+            JsonElement root = json.RootElement;
+            string label = $"[终末地] {role.Nickname}（{role.ChannelName}）";
+            return ParseAttendanceResult(root, label, FormatEndfieldRewards);
+        }
+
+        throw new InvalidOperationException("终末地签到接口不可用。");
     }
 
     private static SignResult ParseAttendanceResult(
@@ -238,13 +276,19 @@ internal sealed class SklandClient : IDisposable
         message.Contains("again", StringComparison.OrdinalIgnoreCase);
 
     private async Task<HttpResponseMessage> SendSignedJsonAsync(
-        string url, string body, string cred, string signToken, CancellationToken cancellationToken)
+        string url,
+        string body,
+        string cred,
+        string signToken,
+        CancellationToken cancellationToken,
+        Action<HttpRequestMessage>? configure = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json")
         };
         AddSignedHeaders(request, cred, signToken, new Uri(url).AbsolutePath, body);
+        configure?.Invoke(request);
         return await _http.SendAsync(request, cancellationToken);
     }
 
@@ -369,6 +413,6 @@ internal sealed class SklandClient : IDisposable
     public void Dispose() => _http.Dispose();
 
     private sealed record ArknightsRole(string Uid, string GameId, string Nickname, string ChannelName);
-    private sealed record EndfieldRole(string Uid, string RoleId, string ServerId, string Nickname, string ChannelName);
+    private sealed record EndfieldRole(string RoleId, string ServerId, string Nickname, string ChannelName);
     private sealed record BindingInfo(List<ArknightsRole> Arknights, List<EndfieldRole> Endfield);
 }

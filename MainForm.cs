@@ -136,9 +136,26 @@ internal sealed class MainForm : Form
             if (TimeSpan.TryParse(_settings.DailyTime, out TimeSpan time))
                 _timePicker.Value = DateTime.Today.Add(time);
             bool scheduled = TaskSchedulerManager.Exists();
-            _statusLabel.Text = scheduled
-                ? $"状态：每日任务已启用，将在 {_timePicker.Value:HH:mm} 运行。"
-                : "状态：每日任务尚未启用。";
+            if (!scheduled)
+            {
+                _statusLabel.Text = "状态：每日任务尚未启用。";
+            }
+            else
+            {
+                TimeSpan? actualTime = TaskSchedulerManager.GetScheduledTime();
+                TimeSpan configuredTime = new(_timePicker.Value.Hour, _timePicker.Value.Minute, 0);
+                if (actualTime is TimeSpan taskTime)
+                {
+                    TimeSpan actualMinute = new(taskTime.Hours, taskTime.Minutes, 0);
+                    _statusLabel.Text = actualMinute == configuredTime
+                        ? $"状态：每日任务已启用，将在 {actualMinute.Hours:00}:{actualMinute.Minutes:00} 运行。"
+                        : $"状态：每日任务实际为 {actualMinute.Hours:00}:{actualMinute.Minutes:00}；保存设置可同步为 {configuredTime.Hours:00}:{configuredTime.Minutes:00}。";
+                }
+                else
+                {
+                    _statusLabel.Text = "状态：每日任务已启用。";
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -146,7 +163,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private bool SaveSettings(bool showDialog)
+    private bool SaveSettings(bool showDialog, bool syncExistingTask = true)
     {
         try
         {
@@ -166,9 +183,38 @@ internal sealed class MainForm : Form
             _settings.EnableArknights = _arknightsCheckBox.Checked;
             _settings.EnableEndfield = _endfieldCheckBox.Checked;
             SettingsStore.Save(_settings);
-            _statusLabel.Text = "状态：设置已加密保存。";
+
+            bool taskUpdated = false;
+            if (syncExistingTask && TaskSchedulerManager.Exists())
+            {
+                var updateResult = TaskSchedulerManager.Install(_timePicker.Value.TimeOfDay);
+                if (!updateResult.Success)
+                {
+                    string detail = string.IsNullOrWhiteSpace(updateResult.Message) ? "任务计划程序拒绝了请求。" : updateResult.Message;
+                    _statusLabel.Text = "状态：设置已保存，但每日任务更新时间失败。";
+                    if (showDialog)
+                    {
+                        MessageBox.Show(this,
+                            $"设置已保存，但现有每日任务未能同步更新时间：{detail}\n\n请点击“启用每日任务”重试。",
+                            "部分完成",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                    }
+                    return true;
+                }
+                taskUpdated = true;
+            }
+
+            _statusLabel.Text = taskUpdated
+                ? $"状态：设置已保存，每日任务已同步为 {_timePicker.Value:HH:mm}。"
+                : "状态：设置已加密保存。";
             if (showDialog)
-                MessageBox.Show(this, "设置已保存。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            {
+                string message = taskUpdated
+                    ? $"设置已保存，并已将每日任务更新时间同步为 {_timePicker.Value:HH:mm}。"
+                    : "设置已保存。";
+                MessageBox.Show(this, message, "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             return true;
         }
         catch (Exception ex)
@@ -215,7 +261,7 @@ internal sealed class MainForm : Form
 
     private void InstallTask()
     {
-        if (!SaveSettings(showDialog: false))
+        if (!SaveSettings(showDialog: false, syncExistingTask: false))
             return;
         try
         {

@@ -4,6 +4,7 @@ using System.Security;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace SklandAutoSign;
 
@@ -224,6 +225,25 @@ internal static class TaskSchedulerManager
     {
         var result = RunSchtasks("/Query", "/TN", TaskName);
         return result.Success;
+    }
+
+    public static TimeSpan? GetScheduledTime()
+    {
+        var result = RunSchtasks("/Query", "/TN", TaskName, "/XML");
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Message))
+            return null;
+
+        try
+        {
+            XDocument document = XDocument.Parse(result.Message);
+            XNamespace ns = document.Root?.Name.Namespace ?? XNamespace.None;
+            string? startBoundary = document.Descendants(ns + "StartBoundary").FirstOrDefault()?.Value;
+            return DateTime.TryParse(startBoundary, out DateTime start) ? start.TimeOfDay : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static (bool Success, string Message) RunSchtasks(params string[] arguments)

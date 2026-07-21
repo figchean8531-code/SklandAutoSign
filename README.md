@@ -10,11 +10,13 @@
 > [!WARNING]
 > 本项目是非官方工具，与鹰角网络、森空岛及相关游戏的运营方没有隶属或授权关系。第三方接口可能随时变化，自动化操作也可能受到服务条款或风控策略限制。使用者应自行判断并承担风险。
 
+当前修正版：`v1.0.1`。版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
+
 ## 功能
 
 - 同时或分别签到《明日方舟》和《明日方舟：终末地》
 - 自动读取森空岛账号中已绑定的角色
-- 支持同一游戏下的多个绑定角色
+- 支持同一游戏下的多个绑定角色（终末地会逐个处理 `roles` 中的全部角色）
 - 使用 Windows 任务计划程序每日定时运行，无需程序常驻
 - 电脑错过执行时间后，在系统恢复且用户登录时补跑
 - 将账号 Token 通过 Windows DPAPI 按当前用户加密保存
@@ -62,9 +64,12 @@ Release 中的单文件版本为自包含构建，不要求另外安装 .NET Run
 - 程序无需保持打开，也无需添加到开机启动项。
 - 到达设定时间时，任务会以 `--run` 参数静默启动同一个 EXE。
 - 电脑休眠、关机或用户未登录导致错过时间时，会在条件恢复后补跑。
+- 修改签到时间并点击“保存设置”时，如果每日任务已经存在，程序会自动同步更新 Windows 计划任务的触发时间。
+- 程序启动时会读取计划任务中的实际触发时间；如果它与保存的配置不一致，会在状态栏提示。
 - 移动或重命名 EXE 后，原任务中的路径会失效；请重新打开程序并点击“启用每日任务”。
 - 点击“停用每日任务”只删除计划任务，不会自动删除本地 Token。
 
+早期版本使用过 `森空岛终末地每日签到` 任务名。新版在重新启用任务时会清理该旧任务。
 
 ## 本地文件与隐私
 
@@ -130,11 +135,29 @@ dotnet publish .\SklandAutoSign.csproj `
 
 ### 发布 GitHub Release（维护者）
 
-1. 从干净工作区执行上述 `dotnet publish` 命令。
-2. 运行 `Get-FileHash -Algorithm SHA256 .\dist\SklandAutoSign.exe` 生成校验值。
-3. 在 GitHub 创建带版本号的 Release，例如 `v1.0.0`。
-4. 将 EXE 和对应的 `SHA256SUMS.txt` 作为 Release 附件上传，不要把 `data` 目录打包进去。
-5. 在另一台或新建的 Windows 用户环境中完成一次无账号启动测试，再发布给普通用户。
+推荐使用仓库中的 `build_release.ps1` 统一构建 EXE 和 SHA256 文件：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_release.ps1
+```
+
+脚本会在 `dist` 目录生成：
+
+- `SklandAutoSign.exe`
+- `SHA256SUMS.txt`
+
+如果本机没有 .NET 8 SDK，也可以使用仓库自带的 GitHub Actions 工作流 `.github/workflows/build-release.yml`。提交到 `main` 后会自动构建 Windows x64 发布包，并在对应 Actions run 的 Artifacts 中提供下载。
+
+发布时请按以下顺序操作：
+
+1. 先把本次版本的源码修改提交到 `main`。
+2. 确认仓库首页已经显示本次修改后，再从该最新提交创建版本 Tag，例如本次修正版 `v1.0.1`。
+3. 上传同一次构建生成的 `SklandAutoSign.exe` 和 `SHA256SUMS.txt`。
+4. 不要把 `data` 目录、`settings.json`、日志或任何真实 Token 打包进 Release。
+5. 发布前至少完成一次《明日方舟》、终末地、多角色、重复签到和 Windows 定时任务测试。
+
+> [!IMPORTANT]
+> Release 的 Tag 决定 GitHub 自动生成的 `Source code (zip)` / `Source code (tar.gz)` 内容。必须先提交源码，再从该提交创建 Tag，避免 Release 二进制与自动生成的源码包不一致。
 
 ## 提交安全检查
 
@@ -147,15 +170,15 @@ git grep -n -i -E "token|password|secret|credential"
 
 第二条命令也会匹配源码中的变量名和安全说明，应人工确认没有真实凭证值。不要只依赖自动扫描。
 
-## 参考项目
+## 协议研究与参考资料
 
-接口流程和兼容性处理参考了以下社区项目与资料：
+接口流程和兼容性研究参考了以下社区项目与资料：
 
 - [devnakx/skyland_auto_checkin](https://github.com/devnakx/skyland_auto_checkin) — 明日方舟与终末地统一签到流程
 - [sjtt2/endfield_auto_sign](https://github.com/sjtt2/endfield_auto_sign) — 终末地签到实现与国服接口配置
 - [ProbiusOfficial/Skland_API](https://github.com/ProbiusOfficial/Skland_API) — 森空岛接口资料（已归档，部分内容可能过时）
 
-这些项目不对本项目提供担保。引用仅用于说明协议研究来源；使用时请同时遵守各参考项目的许可证与说明。
+这些项目不对本项目提供担保。第三方项目的代码、文档和其他内容仍受其各自许可证或版权条款约束；本项目的许可不会覆盖第三方权利。更详细的说明见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)。
 
 ## 版权与使用许可
 
