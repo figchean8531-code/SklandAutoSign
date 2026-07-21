@@ -10,7 +10,7 @@ $ExePath = Join-Path $OutputDir "SklandAutoSign.exe"
 $ChecksumPath = Join-Path $OutputDir "SHA256SUMS.txt"
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw ".NET 8 SDK 未安装或 dotnet 不在 PATH 中。"
+    throw ".NET 8 SDK is not installed or dotnet is not available in PATH."
 }
 
 if (Test-Path $OutputDir) {
@@ -30,16 +30,16 @@ New-Item -ItemType Directory -Path $OutputDir | Out-Null
     -o $OutputDir
 
 if ($LASTEXITCODE -ne 0) {
-    throw "dotnet publish 失败，退出代码：$LASTEXITCODE"
+    throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 if (-not (Test-Path $ExePath)) {
-    throw "构建完成但未找到 $ExePath"
+    throw "Build completed but expected executable was not found: $ExePath"
 }
 
 $Hash = (Get-FileHash -Algorithm SHA256 $ExePath).Hash.ToUpperInvariant()
 "$Hash  SklandAutoSign.exe" | Set-Content -Path $ChecksumPath -Encoding ascii
 
-Write-Host "构建完成："
+Write-Host "Build completed:"
 Write-Host "  $ExePath"
 Write-Host "  $ChecksumPath"
 Write-Host "SHA256: $Hash"
