@@ -1,0 +1,35 @@
+name: Build Windows release package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build release package
+        shell: powershell
+        run: .\build_release.ps1
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SklandAutoSign-win-x64
+          path: |
+            dist/SklandAutoSign.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
